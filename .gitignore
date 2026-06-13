@@ -1,0 +1,6 @@
+.env
+wc_bet.db
+wc_bet.db-shm
+wc_bet.db-wal
+__pycache__/
+*.pyc
