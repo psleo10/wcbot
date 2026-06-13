@@ -84,21 +84,7 @@ async def job_tick():
                 f"Good luck everyone! 🍀"
             )
 
-    # 30 min after kickoff — "match is live" nudge
-    for m in db.locked_matches():
-        ko  = _ko(m)
-        if not ko: continue
-        mid = m["mid"]
-        elapsed = (_now() - ko).total_seconds()
-        if 1700 < elapsed < 1900 and mid not in _notified_30min:
-            _notified_30min.add(mid)
-            s = db.pool_summary(mid)
-            await _send(
-                f"⚽ *{m['label']} — Match underway!*\n\n"
-                f"30 minutes in. Pool: *₹{s['grand']:,.0f}*\n"
-                f"Result announced at full time.\n\n"
-                f"📊 /pool {mid} to see pot sizes"
-            )
+
 
 async def job_poll():
     """Poll football API for results. Runs every 60s."""

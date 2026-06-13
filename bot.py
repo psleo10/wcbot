@@ -86,17 +86,17 @@ async def do_settle(app, match, winner_pot: str):
     emoji    = "🤝" if winner_pot=="draw" else "🏆"
 
     # Build result card
-    wlines = [f"  ✅ {w['name']}: ₹{w['bet']:,.0f} → ₹{w['payout']:,.0f} (+₹{w['profit']:,.0f})"
+    wlines = [f"  ✅ [{w['name']}](tg://user?id={w['tid']}): ₹{w['bet']:,.0f} → *₹{w['payout']:,.0f}* (+₹{w['profit']:,.0f}) 🎉"
               for w in summary["winners"]]
-    llines = [f"  ❌ {l['name']}: -₹{l['amount']:,.0f}"
+    llines = [f"  ❌ [{l['name']}](tg://user?id={l['tid']}): -₹{l['amount']:,.0f}"
               for l in summary["losers"]]
 
     result = (
         f"{emoji} *{match['label']} — Full Time!*\n\n"
         f"Result: *{wlabel}* wins\n"
         f"Pool: ₹{summary['pool']:,.0f} | House: ₹{summary['house']:,.0f}\n\n"
-        f"*Winners*\n" + ("\n".join(wlines) or "  Nobody bet on this pot!") +
-        (f"\n\n*Losers*\n" + "\n".join(llines) if llines else "") +
+        f"🏆 *Winners*\n" + ("\n".join(wlines) or "  Nobody bet on this pot!") +
+        (f"\n\n😔 *Losers*\n" + "\n".join(llines) if llines else "") +
         f"\n\n📊 /leaderboard — updated standings\n"
         f"👉 /bet to bet on next match"
     )
@@ -198,33 +198,31 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.upsert_user(u.id, u.first_name)
     text = (update.message.text or "").strip().lower()
 
-    # Group message — nudge to DM, then stop
+    # Group message — completely silent. Bot never interrupts conversations.
     if update.effective_chat.type != "private":
-        if any(g in text for g in GREET) or len(text.split()) <= 2:
-            await update.message.reply_text(
-                f"👋 Hey *{u.first_name}!* I\'m the WC 2026 Bet Bot ⚽\n\n"
-                f"🔒 *To bet anonymously:*\n"
-                f"DM me → @UFC_wcbot → /bet\n"
-                f"Your pick is completely private.\n\n"
-                f"📊 /odds — live match odds\n"
-                f"📋 /matches — upcoming fixtures\n"
-                f"🏆 /leaderboard — standings",
-                parse_mode=ParseMode.MARKDOWN
-            )
-        return  # always ignore non-command group messages
+        return
 
     # DM only from here
     if any(g in text for g in GREET) or len(text.split()) <= 2:
-        await update.message.reply_text(
-            f"👋 Hey *{u.first_name}!*\n\n"
-            f"I\'m the WC 2026 Bet Bot ⚽\n\n"
-            f"👉 /bet — place a bet now\n"
-            f"📋 /matches — see upcoming fixtures\n"
-            f"📊 /odds — match odds + team history\n"
-            f"📖 /history — WC fun facts\n"
-            f"❓ /help — all commands",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        import random
+        spicy = random.choice([
+            f"Aye *{u.first_name}!* You here to chat or to WIN? 😤\n\n👉 /bet — put your money where your mouth is",
+            f"*{u.first_name}* showing up with no bet placed yet 👀\nThe pool isn\'t going to fill itself!\n\n👉 /bet now",
+            f"Oh look who it is 👋 *{u.first_name}*\nStill deciding which team to back? That\'s called being scared 😂\n\n👉 /bet",
+            f"*{u.first_name}* has entered the chat ⚽\nBig talk, small bets. Let\'s change that 💪\n\n👉 /bet to prove yourself",
+            f"Hey *{u.first_name}!* The bot doesn\'t sleep, the World Cup doesn\'t wait 🏆\n\n👉 /bet | 📋 /matches | 📊 /odds",
+        ])
+        await update.message.reply_text(spicy, parse_mode=ParseMode.MARKDOWN)
+        return
+
+    # Unknown text in DM
+    await update.message.reply_text(
+        f"Not sure what you mean *{u.first_name}* 🤔\n\n"
+        f"👉 /bet — place a bet\n"
+        f"📋 /matches — fixtures\n"
+        f"❓ /help — all commands",
+        parse_mode=ParseMode.MARKDOWN
+    )
 
 # ── /matches ───────────────────────────────────────────────────────────────────
 
@@ -791,9 +789,11 @@ async def cmd_lock(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Error: {ctx.error}", exc_info=ctx.error)
     if isinstance(update, Update) and update.effective_message:
-        await update.effective_message.reply_text(
-            "⚠️ Something went wrong. Try again.\n\n👉 /bet to restart"
-        )
+        # Only show error in DM — never interrupt group conversations
+        if update.effective_chat and update.effective_chat.type == "private":
+            await update.effective_message.reply_text(
+                "⚠️ Something went wrong. Try again.\n\n👉 /bet to restart"
+            )
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
