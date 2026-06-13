@@ -98,20 +98,44 @@ async def job_poll():
         except Exception as e:
             logger.error(f"Poll settle error {m['mid']}: {e}")
 
+# Team name aliases — API name → possible DB names
+ALIASES = {
+    "united states": ["usa", "united states"],
+    "usa":           ["usa", "united states"],
+    "bosnia-herzegovina": ["bosnia", "bosnia-herzegovina"],
+    "bosnia":        ["bosnia", "bosnia-herzegovina"],
+    "czechia":       ["czechia", "czech republic"],
+    "czech republic":["czechia", "czech republic"],
+    "south korea":   ["south korea", "korea republic"],
+    "korea republic":["south korea", "korea republic"],
+    "dr congo":      ["dr congo", "congo dr", "democratic republic of congo"],
+    "iran":          ["iran", "ir iran"],
+    "ir iran":       ["iran", "ir iran"],
+}
+
+def _team_matches(api_name: str, db_name: str) -> bool:
+    """Fuzzy match between API team name and DB team name."""
+    a = api_name.lower().strip()
+    d = db_name.lower().strip()
+    if a == d: return True
+    if a in d or d in a: return True
+    for key, variants in ALIASES.items():
+        if a in variants and d in variants:
+            return True
+    return False
+
 def _fetch_result(m):
     """
-    Tries football-data.org first (free, no credit card).
-    API key from env: FOOTBALL_API_KEY
-    WC 2026 competition id = 2000
+    Auto-settle using football-data.org (free tier, covers WC 2026).
+    Competition ID = 2000. Handles team name mismatches via aliases.
     """
     if not FOOTBALL_API_KEY:
         return None
     try:
-        # football-data.org — free tier covers WC
         r = requests.get(
             "https://api.football-data.org/v4/competitions/2000/matches",
             headers={"X-Auth-Token": FOOTBALL_API_KEY},
-            params={"status": "FINISHED", "matchday": _guess_matchday(m)},
+            params={"status": "FINISHED"},
             timeout=10
         )
         if r.status_code != 200:
@@ -119,25 +143,31 @@ def _fetch_result(m):
             return None
 
         for match in r.json().get("matches", []):
-            home = match["homeTeam"]["name"]
-            away = match["awayTeam"]["name"]
+            home   = match["homeTeam"]["name"]
+            away   = match["awayTeam"]["name"]
             status = match["status"]
-            ta = m["team_a"].lower(); tb = m["team_b"].lower()
 
-            if not ((ta in home.lower() or ta in away.lower()) and
-                    (tb in home.lower() or tb in away.lower())):
+            # Match by team names using fuzzy alias matching
+            home_is_a = _team_matches(home, m["team_a"])
+            home_is_b = _team_matches(home, m["team_b"])
+            away_is_a = _team_matches(away, m["team_a"])
+            away_is_b = _team_matches(away, m["team_b"])
+
+            if not ((home_is_a and away_is_b) or (home_is_b and away_is_a)):
                 continue
 
             if status != "FINISHED":
-                return None  # still playing
+                return None  # still in progress
 
             gh = match["score"]["fullTime"]["home"] or 0
             ga = match["score"]["fullTime"]["away"] or 0
 
             if gh > ga:
-                return "team_a" if m["team_a"].lower() in home.lower() else "team_b"
+                # home team won
+                return "team_a" if home_is_a else "team_b"
             elif ga > gh:
-                return "team_b" if m["team_b"].lower() in away.lower() else "team_a"
+                # away team won
+                return "team_a" if away_is_a else "team_b"
             else:
                 return "draw"
 
