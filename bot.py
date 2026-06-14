@@ -64,6 +64,12 @@ def est(amt, pot_tot, grand):
     ng = grand + amt
     return round((amt/np)*ng*(1-HOUSE_CUT), 0) if np else 0
 
+KNOCKOUT_PREFIXES = ("r32", "r16", "qf", "semi", "3rd", "final", "quarter", "round of")
+
+def is_knockout(match) -> bool:
+    label = match["label"].lower()
+    return any(p in label for p in KNOCKOUT_PREFIXES)
+
 def safe_send(text, limit=4000):
     """Split text at paragraph boundaries to stay under Telegram limit."""
     if len(text) <= limit:
@@ -349,12 +355,20 @@ async def cb_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"_(pots are anonymous)_\n\n"
         f"*Who wins?*"
     )
-    kb = InlineKeyboardMarkup([
-        [
+    if is_knockout(m):
+        row1 = [
+            InlineKeyboardButton(f"🔵 {m['team_a']}", callback_data=f"bp:{mid}:team_a"),
+            InlineKeyboardButton(f"🔴 {m['team_b']}", callback_data=f"bp:{mid}:team_b"),
+        ]
+        txt += "\n\n_Knockout — no draw. Pens if level at 90._"
+    else:
+        row1 = [
             InlineKeyboardButton(f"🔵 {m['team_a']}", callback_data=f"bp:{mid}:team_a"),
             InlineKeyboardButton("⚪ Draw",            callback_data=f"bp:{mid}:draw"),
             InlineKeyboardButton(f"🔴 {m['team_b']}", callback_data=f"bp:{mid}:team_b"),
-        ],
+        ]
+    kb = InlineKeyboardMarkup([
+        row1,
         [
             InlineKeyboardButton("← All matches", callback_data="goback"),
             InlineKeyboardButton("❌ Cancel",      callback_data="cancel"),
@@ -633,25 +647,28 @@ async def cmd_mybets(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_lb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     rows   = db.leaderboard()
-    medals = ["🥇","🥈","🥉"]
-    lines  = ["🏆 *WC 2026 Leaderboard*\n"]
+    medals = ["🥇", "🥈", "🥉"]
+    out    = ["🏆 *WC 2026 Leaderboard*\n"]
     placed = 0
-    for i,r in enumerate(rows):
-        if r["wagered"]==0: continue
-        px = medals[i] if i<3 else f"{i+1}."
-        n  = r["net"]
-        ns = f"*+₹{n:,.0f}* 📈" if n>0 else (f"*-₹{abs(n):,.0f}* 📉" if n<0 else "₹0 ➡️")
-        lines.append(f"{px} {r['name']}  {ns}")
+    for i, r in enumerate(rows):
+        if r["wagered"] == 0: continue
+        px  = medals[i] if i < 3 else str(i+1) + "."
+        n   = r["net"]
+        mb  = r["matches_bet"]
+        w   = r["wins"]
+        wp  = round((w / mb) * 100) if mb > 0 else 0
+        pnl = ("*+₹" + "{:,.0f}".format(n) + "* 📈") if n > 0 else (("*-₹" + "{:,.0f}".format(abs(n)) + "* 📉") if n < 0 else "₹0 ➡")
+        bar = ("🟩" * int(wp/20)) + ("⬜" * (5 - int(wp/20)))
+        out.append(px + " *" + r["name"] + "*")
+        out.append("   " + pnl + "  |  " + str(mb) + " match(es)  |  " + bar + " " + str(wp) + "% win")
+        out.append("")
         placed += 1
     if not placed:
-        await update.message.reply_text(
-            "No settled bets yet — board updates after first result!\n\n👉 /bet to place a bet"
-        )
+        await update.message.reply_text("No settled bets yet!\n\n/bet to place a bet")
         return
-    lines.append("\n_Net profit/loss — all settled matches_\n👉 /bet to keep going")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
-
-# ── /history ───────────────────────────────────────────────────────────────────
+    out.append("_Net P&L | matches bet | win % -- all settled_")
+    out.append("/bet to keep going")
+    await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
 
 async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(

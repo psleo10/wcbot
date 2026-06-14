@@ -214,7 +214,9 @@ def leaderboard():
               COALESCE(SUM(
                 CASE WHEN b.status='won'  THEN b.payout-b.amount
                      WHEN b.status='lost' THEN -b.amount
-                     ELSE 0 END),0) as net
+                     ELSE 0 END),0) as net,
+              COUNT(CASE WHEN b.status IN ('won','lost') THEN 1 END) as matches_bet,
+              COUNT(CASE WHEN b.status='won' THEN 1 END) as wins
             FROM users u
             LEFT JOIN bets b ON u.tid=b.uid
             GROUP BY u.tid ORDER BY net DESC
