@@ -16,13 +16,15 @@ logger = logging.getLogger(__name__)
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY","")
 HOUSE_CUT        = float(os.getenv("HOUSE_CUT","0.025"))
 
-_app      = None
-_group_id = None
+_app       = None
+_group_id  = None
+_settle_fn = None
 
-def set_bot(app, group_id: int):
-    global _app, _group_id
-    _app      = app
-    _group_id = group_id
+def set_bot(app, group_id: int, settle_fn=None):
+    global _app, _group_id, _settle_fn
+    _app       = app
+    _group_id  = group_id
+    _settle_fn = settle_fn
 
 def _now():
     return datetime.now(timezone.utc)
@@ -120,8 +122,9 @@ async def job_poll():
             # Lock it first if still open
             if m["status"] == "open":
                 db.lock_match(m["mid"])
-            from bot import do_settle
-            await do_settle(_app, m, winner)
+            # Use the settle callback set at startup
+            if _settle_fn:
+                await _settle_fn(_app, m, winner)
             logger.info(f"Auto-settled #{m['mid']} {m['label']} → {winner}")
         except Exception as e:
             logger.error(f"Poll settle error {m['mid']}: {e}")

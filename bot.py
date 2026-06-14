@@ -828,7 +828,7 @@ def main():
     app.add_error_handler(on_error)
 
     if GROUP_CHAT_ID:
-        sched.set_bot(app, GROUP_CHAT_ID)
+        sched.set_bot(app, GROUP_CHAT_ID, settle_fn=do_settle)
     sched.make_scheduler().start()
 
     logger.info("WC Bet Bot running...")
