@@ -621,10 +621,7 @@ async def cmd_odds(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_mybets(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         await update.message.reply_text(
-            "📋 Your bets are private!
-
-"
-            "👉 DM @UFC_wcbot → /mybets to see your history",
+            "Your bets are private!\n\nDM @UFC_wcbot and use /mybets",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -734,6 +731,94 @@ async def cmd_results(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.warning(f"Results fetch error: {e}")
         await update.message.reply_text("Could not fetch results. Try again shortly.")
+
+
+async def cmd_topscorers(update, ctx):
+    db.upsert_user(update.effective_user.id, update.effective_user.first_name)
+    import requests as req
+    key = os.getenv("FOOTBALL_API_KEY","")
+    if not key:
+        await update.message.reply_text("Football API not configured."); return
+    try:
+        r = req.get("https://api.football-data.org/v4/competitions/2000/scorers?limit=10",
+                    headers={"X-Auth-Token": key}, timeout=10)
+        scorers = r.json().get("scorers", [])
+        if not scorers:
+            await update.message.reply_text("No scorers yet - check back after more matches!"); return
+        medals = ["1st", "2nd", "3rd"]
+        lines = ["*WC 2026 Golden Boot Race*\n"]
+        for i, s in enumerate(scorers[:10]):
+            px = medals[i] if i < 3 else str(i+1)+"."
+            name = s["player"]["name"]
+            team = s["team"]["name"]
+            goals = s.get("goals",0) or 0
+            assists = s.get("assists",0) or 0
+            lines.append(px + " *" + name + "* (" + team + ")")
+            lines.append("   " + str(goals) + " goals | " + str(assists) + " assists\n")
+        lines.append("👉 /bet  |  /standings  |  /history")
+        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.error("Topscorers: " + str(e))
+        await update.message.reply_text("Could not fetch top scorers. Try again soon!")
+
+
+async def cmd_h2h(update, ctx):
+    db.upsert_user(update.effective_user.id, update.effective_user.first_name)
+    if not ctx.args:
+        matches = db.open_matches(limit=1)
+        if not matches:
+            await update.message.reply_text("Usage: /h2h <match_id>  e.g. /h2h 9"); return
+        mid = matches[0]["mid"]
+    else:
+        try: mid = int(ctx.args[0])
+        except:
+            await update.message.reply_text("Use: /h2h 9  |  /matches for IDs"); return
+    m = db.get_match(mid)
+    if not m:
+        await update.message.reply_text("Match not found."); return
+    import requests as req
+    key = os.getenv("FOOTBALL_API_KEY","")
+    from facts import get_h2h as fact_h2h, get_team_fact
+    lines = ["*" + m["label"] + " - Head to Head*\n"]
+    h2h_fact = fact_h2h(m["team_a"], m["team_b"])
+    if h2h_fact:
+        lines.append("*Historic rivalry:*\n" + h2h_fact + "\n")
+    fa = get_team_fact(m["team_a"])
+    fb = get_team_fact(m["team_b"])
+    if fa: lines.append(fa + "\n")
+    if fb: lines.append(fb + "\n")
+    if key:
+        try:
+            r = req.get("https://api.football-data.org/v4/competitions/2000/matches",
+                        headers={"X-Auth-Token": key},
+                        params={"status": "FINISHED"}, timeout=10)
+            finished = r.json().get("matches", [])
+            meetings = []
+            for fm in finished:
+                home = fm["homeTeam"]["name"]
+                away = fm["awayTeam"]["name"]
+                ta = m["team_a"].lower()
+                tb = m["team_b"].lower()
+                if (ta in home.lower() or ta in away.lower()) and \
+                   (tb in home.lower() or tb in away.lower()):
+                    gh = fm["score"]["fullTime"]["home"] or 0
+                    ga = fm["score"]["fullTime"]["away"] or 0
+                    meetings.append("  WC 2026: " + home + " " + str(gh) + "-" + str(ga) + " " + away)
+            if meetings:
+                lines.append("*This tournament:*\n" + "\n".join(meetings) + "\n")
+        except Exception as e:
+            logger.warning("H2H API: " + str(e))
+    lines.append("/pool " + str(mid) + "  |  /odds " + str(mid))
+    lines.append("👉 /bet to place your bet")
+    full = "\n".join(lines)
+    if len(full) > 4000:
+        split = full[:4000].rfind("\n\n")
+        await update.message.reply_text(full[:split], parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(full[split:], parse_mode=ParseMode.MARKDOWN)
+    else:
+        await update.message.reply_text(full, parse_mode=ParseMode.MARKDOWN)
+
+
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txt = (
@@ -885,6 +970,8 @@ def main():
     app.add_handler(CommandHandler("leaderboard", cmd_lb))
     app.add_handler(CommandHandler("history",     cmd_history))
     app.add_handler(CommandHandler("results",     cmd_results))
+    app.add_handler(CommandHandler("topscorers",  cmd_topscorers))
+    app.add_handler(CommandHandler("h2h",         cmd_h2h))
     app.add_handler(CommandHandler("help",        cmd_help))
     app.add_handler(CommandHandler("settle",      cmd_settle))
     app.add_handler(CommandHandler("halftime",    cmd_halftime))
