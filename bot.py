@@ -86,9 +86,9 @@ async def do_settle(app, match, winner_pot: str):
     emoji    = "🤝" if winner_pot=="draw" else "🏆"
 
     # Build result card
-    wlines = [f"  ✅ *{w['name']}* bet on {plabel(match, winner_pot)} — ₹{w['bet']:,.0f} → *₹{w['payout']:,.0f}* (+₹{w['profit']:,.0f}) 🎉"
+    wlines = [f"  ✅ [{w['name']}](tg://user?id={w['tid']}): ₹{w['bet']:,.0f} → *₹{w['payout']:,.0f}* (+₹{w['profit']:,.0f}) 🎉"
               for w in summary["winners"]]
-    llines = [f"  ❌ *{l['name']}* — -₹{l['amount']:,.0f}"
+    llines = [f"  ❌ [{l['name']}](tg://user?id={l['tid']}): -₹{l['amount']:,.0f}"
               for l in summary["losers"]]
 
     result = (
@@ -661,11 +661,60 @@ async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── /help ──────────────────────────────────────────────────────────────────────
 
+
+async def cmd_results(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Last 5 WC 2026 match results with scores from API."""
+    db.upsert_user(update.effective_user.id, update.effective_user.first_name)
+    import requests as _req
+    key = os.getenv("FOOTBALL_API_KEY", "")
+    if not key:
+        await update.message.reply_text("Results unavailable. Use /matches for upcoming fixtures.")
+        return
+    try:
+        r = _req.get(
+            "https://api.football-data.org/v4/competitions/2000/matches",
+            headers={"X-Auth-Token": key},
+            params={"status": "FINISHED"},
+            timeout=10
+        )
+        if r.status_code != 200:
+            await update.message.reply_text("Could not fetch results right now. Try again shortly.")
+            return
+        all_matches = r.json().get("matches", [])
+        if not all_matches:
+            await update.message.reply_text("No finished matches yet. Use /matches for upcoming fixtures.")
+            return
+        last5 = all_matches[-5:]
+        lines = ["*Last 5 WC 2026 Results*", ""]
+        for m in reversed(last5):
+            home = m["homeTeam"]["name"]
+            away = m["awayTeam"]["name"]
+            gh   = m["score"]["fullTime"]["home"]
+            ga   = m["score"]["fullTime"]["away"]
+            date = m["utcDate"][5:10].replace("-", "/")
+            if gh > ga:
+                line = f"*{home}* {gh}-{ga} {away}"
+                icon = "🏆"
+            elif ga > gh:
+                line = f"{home} {gh}-{ga} *{away}*"
+                icon = "🏆"
+            else:
+                line = f"{home} {gh}-{ga} {away}"
+                icon = "🤝"
+            lines.append(f"{icon} {date}:  {line}")
+        lines.append("")
+        lines.append("👉 /bet to place bets on upcoming matches")
+        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.warning(f"Results fetch error: {e}")
+        await update.message.reply_text("Could not fetch results. Try again shortly.")
+
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txt = (
         "⚽ *WC 2026 Bet Bot — Commands*\n\n"
         "/bet — place a bet (button flow)\n"
         "/matches — next 5 open fixtures\n"
+        "/results — last 5 match scores\n"
         "/pool — live pot sizes overview\n"
         "/pool `<id>` — detailed pool for one match\n"
         "/odds `<id>` — crowd odds + who backed whom + team history\n"
@@ -809,6 +858,7 @@ def main():
     app.add_handler(CommandHandler("mybets",      cmd_mybets))
     app.add_handler(CommandHandler("leaderboard", cmd_lb))
     app.add_handler(CommandHandler("history",     cmd_history))
+    app.add_handler(CommandHandler("results",     cmd_results))
     app.add_handler(CommandHandler("help",        cmd_help))
     app.add_handler(CommandHandler("settle",      cmd_settle))
     app.add_handler(CommandHandler("halftime",    cmd_halftime))
