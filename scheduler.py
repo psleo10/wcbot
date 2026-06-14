@@ -45,8 +45,27 @@ def _ist(s):
 
 # track what we've already notified to avoid repeats
 _notified_1hr   = set()
-_notified_30min = set()
+_notified_30min = set()  # 30 min BEFORE kickoff group pool snapshot
+_notified_15min = set()  # 15 min before kickoff personal DM nudge
 _notified_lock  = set()
+
+async def _dm_all_users(text: str):
+    """DM every registered user."""
+    if not _app: return
+    import sqlite3, os as _os
+    db_path = _os.getenv("DATABASE_PATH", "wc_bet.db")
+    try:
+        c = sqlite3.connect(db_path)
+        c.row_factory = sqlite3.Row
+        users = c.execute("SELECT tid FROM users").fetchall()
+        c.close()
+        for u in users:
+            try:
+                await _app.bot.send_message(u["tid"], text, parse_mode="Markdown")
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"DM all failed: {e}")
 
 async def job_tick():
     """Runs every 30s. Handles locking + reminders."""
@@ -57,7 +76,7 @@ async def job_tick():
         mid = m["mid"]
         diff = (ko - now).total_seconds()
 
-        # 1 hour reminder
+        # 1 hour reminder — group
         if 3550 < diff < 3650 and mid not in _notified_1hr:
             _notified_1hr.add(mid)
             s = db.pool_summary(mid)
@@ -67,8 +86,41 @@ async def job_tick():
                 f"⚽ *{m['label']}*\n"
                 f"🕐 {_ist(m['kickoff'])}\n\n"
                 f"💰 Pool so far: ₹{g:,.0f}\n"
-                f"Bets lock in 60 mins — place yours now!\n\n"
+                f"Bets lock in 60 mins — last chance!\n\n"
                 f"👉 /bet to place a bet"
+            )
+
+        # 30 min before kickoff — group pool snapshot with bettor counts
+        if 1750 < diff < 1850 and mid not in _notified_30min:
+            _notified_30min.add(mid)
+            s = db.pool_summary(mid)
+            g = s["grand"]
+            ta = s["totals"]["team_a"]; tac = s["counts"]["team_a"]
+            dr = s["totals"]["draw"];   drc = s["counts"]["draw"]
+            tb = s["totals"]["team_b"]; tbc = s["counts"]["team_b"]
+            await _send(
+                f"🔥 *30 mins to kickoff — {m['label']}*\n\n"
+                f"*Who\'s backing who:*\n"
+                f"🔵 {m['team_a']}: {tac} bettor(s) — ₹{ta:,.0f}\n"
+                f"⚪ Draw: {drc} bettor(s) — ₹{dr:,.0f}\n"
+                f"🔴 {m['team_b']}: {tbc} bettor(s) — ₹{tb:,.0f}\n\n"
+                f"Total pool: *₹{g:,.0f}*\n"
+                f"Bets lock in 30 mins!\n\n"
+                f"👉 /bet to get in"
+            )
+
+        # 15 min before kickoff — personal DM to everyone
+        if 850 < diff < 950 and mid not in _notified_15min:
+            _notified_15min.add(mid)
+            s = db.pool_summary(mid)
+            g = s["grand"]
+            await _dm_all_users(
+                f"⏰ *15 minutes to kickoff!*\n\n"
+                f"⚽ *{m['label']}*\n"
+                f"🕐 {_ist(m['kickoff'])}\n\n"
+                f"💰 Pool: ₹{g:,.0f} — bets lock in 15 mins!\n"
+                f"Last chance to get your bet in.\n\n"
+                f"👉 /bet now — don\'t miss out!"
             )
 
         # Lock 1 min before kickoff
@@ -77,13 +129,15 @@ async def job_tick():
             db.lock_match(mid)
             s = db.pool_summary(mid)
             g = s["grand"]
-            ta = s["totals"]["team_a"]; dr = s["totals"]["draw"]; tb = s["totals"]["team_b"]
+            ta = s["totals"]["team_a"]; tac = s["counts"]["team_a"]
+            dr = s["totals"]["draw"];   drc = s["counts"]["draw"]
+            tb = s["totals"]["team_b"]; tbc = s["counts"]["team_b"]
             await _send(
                 f"🔒 *Bets locked! — {m['label']}*\n\n"
-                f"Final pool: *₹{g:,.0f}*\n"
-                f"🔵 {m['team_a']}: ₹{ta:,.0f}\n"
-                f"⚪ Draw: ₹{dr:,.0f}\n"
-                f"🔴 {m['team_b']}: ₹{tb:,.0f}\n\n"
+                f"*Final pool: ₹{g:,.0f}*\n\n"
+                f"🔵 {m['team_a']}: {tac} bettor(s) — ₹{ta:,.0f}\n"
+                f"⚪ Draw: {drc} bettor(s) — ₹{dr:,.0f}\n"
+                f"🔴 {m['team_b']}: {tbc} bettor(s) — ₹{tb:,.0f}\n\n"
                 f"Good luck everyone! 🍀"
             )
 

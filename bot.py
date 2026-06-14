@@ -86,9 +86,9 @@ async def do_settle(app, match, winner_pot: str):
     emoji    = "🤝" if winner_pot=="draw" else "🏆"
 
     # Build result card
-    wlines = [f"  ✅ [{w['name']}](tg://user?id={w['tid']}): ₹{w['bet']:,.0f} → *₹{w['payout']:,.0f}* (+₹{w['profit']:,.0f}) 🎉"
+    wlines = [f"  ✅ *{w['name']}* bet on {plabel(match, winner_pot)} — ₹{w['bet']:,.0f} → *₹{w['payout']:,.0f}* (+₹{w['profit']:,.0f}) 🎉"
               for w in summary["winners"]]
-    llines = [f"  ❌ [{l['name']}](tg://user?id={l['tid']}): -₹{l['amount']:,.0f}"
+    llines = [f"  ❌ *{l['name']}* — -₹{l['amount']:,.0f}"
               for l in summary["losers"]]
 
     result = (
