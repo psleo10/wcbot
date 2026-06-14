@@ -5,6 +5,7 @@ scheduler.py — Background jobs
 - 30min after kickoff: "match started" nudge
 - Poll API for results (optional)
 """
+from typing import Optional
 import os, logging, requests
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
