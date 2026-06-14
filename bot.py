@@ -619,6 +619,15 @@ async def cmd_odds(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ── /mybets ────────────────────────────────────────────────────────────────────
 
 async def cmd_mybets(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private":
+        await update.message.reply_text(
+            "📋 Your bets are private!
+
+"
+            "👉 DM @UFC_wcbot → /mybets to see your history",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
     u = update.effective_user
     db.upsert_user(u.id, u.first_name)
     bets = db.user_bet_history(u.id)
