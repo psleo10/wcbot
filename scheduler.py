@@ -89,19 +89,68 @@ async def job_tick():
 async def job_poll():
     """Poll football API for results. Runs every 60s."""
     if not FOOTBALL_API_KEY: return
-    for m in db.locked_matches():
+
+    # Get ALL finished matches from API
+    try:
+        r = requests.get(
+            "https://api.football-data.org/v4/competitions/2000/matches",
+            headers={"X-Auth-Token": FOOTBALL_API_KEY},
+            params={"status": "FINISHED"},
+            timeout=10
+        )
+        if r.status_code != 200:
+            logger.warning(f"API returned {r.status_code}")
+            return
+        api_finished = r.json().get("matches", [])
+    except Exception as e:
+        logger.warning(f"API fetch failed: {e}")
+        return
+
+    # Check both locked AND open matches against finished API results
+    # This catches matches that finished while bot was restarting
+    with db.get_conn() as c:
+        pending = c.execute(
+            "SELECT * FROM matches WHERE status IN ('locked','open')"
+        ).fetchall()
+
+    for m in pending:
         try:
-            winner = _fetch_result(m)
+            winner = _match_against_api(m, api_finished)
             if winner is None: continue
+            # Lock it first if still open
+            if m["status"] == "open":
+                db.lock_match(m["mid"])
             from bot import do_settle
             await do_settle(_app, m, winner)
+            logger.info(f"Auto-settled #{m['mid']} {m['label']} → {winner}")
         except Exception as e:
             logger.error(f"Poll settle error {m['mid']}: {e}")
 
-# Team name aliases — API name → possible DB names
+def _match_against_api(m, api_matches) -> Optional[str]:
+    """Match a DB match against a list of API finished matches."""
+    for am in api_matches:
+        home = am["homeTeam"]["name"]
+        away = am["awayTeam"]["name"]
+        home_is_a = _team_matches(home, m["team_a"])
+        home_is_b = _team_matches(home, m["team_b"])
+        away_is_a = _team_matches(away, m["team_a"])
+        away_is_b = _team_matches(away, m["team_b"])
+        if not ((home_is_a and away_is_b) or (home_is_b and away_is_a)):
+            continue
+        gh = am["score"]["fullTime"]["home"] or 0
+        ga = am["score"]["fullTime"]["away"] or 0
+        if gh > ga:
+            return "team_a" if home_is_a else "team_b"
+        elif ga > gh:
+            return "team_a" if away_is_a else "team_b"
+        else:
+            return "draw"
+    return None
+
+# Team name aliases — API name → possible DB names (covers all WC 2026 teams)
 ALIASES = {
-    "united states": ["usa", "united states"],
-    "usa":           ["usa", "united states"],
+    "united states": ["usa", "united states", "us"],
+    "usa":           ["usa", "united states", "us"],
     "bosnia-herzegovina": ["bosnia", "bosnia-herzegovina"],
     "bosnia":        ["bosnia", "bosnia-herzegovina"],
     "czechia":       ["czechia", "czech republic"],
@@ -111,6 +160,17 @@ ALIASES = {
     "dr congo":      ["dr congo", "congo dr", "democratic republic of congo"],
     "iran":          ["iran", "ir iran"],
     "ir iran":       ["iran", "ir iran"],
+    "turkiye":       ["turkiye", "turkey"],
+    "turkey":        ["turkiye", "turkey"],
+    "ivory coast":   ["ivory coast", "cote d'ivoire", "côte d'ivoire"],
+    "cote d'ivoire": ["ivory coast", "cote d'ivoire", "côte d'ivoire"],
+    "cape verde":    ["cape verde", "cabo verde"],
+    "cabo verde":    ["cape verde", "cabo verde"],
+    "saudi arabia":  ["saudi arabia", "ksa"],
+    "new zealand":   ["new zealand", "nz"],
+    "costa rica":    ["costa rica"],
+    "morocco":       ["morocco"],
+    "australia":     ["australia"],
 }
 
 def _team_matches(api_name: str, db_name: str) -> bool:
@@ -125,12 +185,8 @@ def _team_matches(api_name: str, db_name: str) -> bool:
     return False
 
 def _fetch_result(m):
-    """
-    Auto-settle using football-data.org (free tier, covers WC 2026).
-    Competition ID = 2000. Handles team name mismatches via aliases.
-    """
-    if not FOOTBALL_API_KEY:
-        return None
+    """Legacy single-match fetch — kept for compatibility."""
+    if not FOOTBALL_API_KEY: return None
     try:
         r = requests.get(
             "https://api.football-data.org/v4/competitions/2000/matches",
@@ -138,39 +194,8 @@ def _fetch_result(m):
             params={"status": "FINISHED"},
             timeout=10
         )
-        if r.status_code != 200:
-            logger.warning(f"football-data.org returned {r.status_code}")
-            return None
-
-        for match in r.json().get("matches", []):
-            home   = match["homeTeam"]["name"]
-            away   = match["awayTeam"]["name"]
-            status = match["status"]
-
-            # Match by team names using fuzzy alias matching
-            home_is_a = _team_matches(home, m["team_a"])
-            home_is_b = _team_matches(home, m["team_b"])
-            away_is_a = _team_matches(away, m["team_a"])
-            away_is_b = _team_matches(away, m["team_b"])
-
-            if not ((home_is_a and away_is_b) or (home_is_b and away_is_a)):
-                continue
-
-            if status != "FINISHED":
-                return None  # still in progress
-
-            gh = match["score"]["fullTime"]["home"] or 0
-            ga = match["score"]["fullTime"]["away"] or 0
-
-            if gh > ga:
-                # home team won
-                return "team_a" if home_is_a else "team_b"
-            elif ga > gh:
-                # away team won
-                return "team_a" if away_is_a else "team_b"
-            else:
-                return "draw"
-
+        if r.status_code != 200: return None
+        return _match_against_api(m, r.json().get("matches", []))
     except Exception as e:
         logger.warning(f"API fetch error: {e}")
     return None
