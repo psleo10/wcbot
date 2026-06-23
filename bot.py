@@ -319,25 +319,20 @@ async def cb_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     existing_bet = db.get_user_bet_on_match(uid, mid)
 
     # If user already has a bet on this match, only let them edit their existing pot
-    if existing:
-        existing_pot   = existing[0]["pot"]
-        existing_amt   = existing[0]["amount"]
-        existing_label = plabel(m, existing_pot)
+    if existing_bet:
+        ep     = existing_bet
+        elabel = db.plabel(m, ep["pot"])
         txt = (
             f"⚽ *{m['label']}*\n"
             f"🕐 {ist(m['kickoff'])}\n\n"
-            f"*Live pool — ₹{grand:,.0f} total*\n"
-            f"🔵 {m['team_a']}: {pot_line('team_a')}\n"
-            f"⚪ Draw: {pot_line('draw')}\n"
-            f"🔴 {m['team_b']}: {pot_line('team_b')}\n\n"
-            f"✏️ *You already bet {pemoji(existing_pot)} {existing_label} — ₹{existing_amt:,.0f}*\n"
-            f"You can only edit this bet, not switch teams.\n\n"
-            f"*Want to change your amount?*"
+            f"✏️ *You already bet {pemoji(ep['pot'])} {elabel} — ₹{ep['amount']:,.0f}*\n"
+            f"You can only edit the amount, not switch outcome.\n\n"
+            f"Tap to change your amount:"
         )
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(
-                f"✏️ Edit {pemoji(existing_pot)} {existing_label} bet",
-                callback_data=f"bp:{mid}:{existing_pot}"
+                f"✏️ Edit — {pemoji(ep['pot'])} {elabel}",
+                callback_data=f"bp:{mid}:{ep['pot']}"
             )],
             [
                 InlineKeyboardButton("← All matches", callback_data="goback"),
