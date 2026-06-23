@@ -529,7 +529,9 @@ async def cmd_pool(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if g == 0:
                 lines.append(f"*#{m['mid']}* {m['label']} — no bets yet")
             else:
-                ta=s["totals"]["team_a"]; dr=s["totals"]["draw"]; tb=s["totals"]["team_b"]
+                ta = s["totals"].get("team_a_2plus",0) + s["totals"].get("team_a_by_1",0)
+                dr = s["totals"].get("draw_pens",0)
+                tb = s["totals"].get("team_b_by_1",0) + s["totals"].get("team_b_2plus",0)
                 lines.append(
                     f"*#{m['mid']}* {m['label']}\n"
                     f"  🔵₹{ta:,.0f} ⚪₹{dr:,.0f} 🔴₹{tb:,.0f} | Total ₹{g:,.0f}"
@@ -553,12 +555,21 @@ async def cmd_pool(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"",
         f"*Total: ₹{g:,.0f}* _(anonymous)_\n",
     ]
-    for pk,label,emoji in [("team_a",m["team_a"],"🔵"),("draw","Draw","⚪"),("team_b",m["team_b"],"🔴")]:
-        tot=s["totals"][pk]; cnt=s["counts"][pk]
+    is_ko = not m["label"].startswith("Group")
+    pot_rows = [
+        ("team_a_2plus", f"{m['team_a']} wins by 2+", "🔵"),
+        ("team_a_by_1",  f"{m['team_a']} wins by 1",  "🔵"),
+        ("draw_pens",    "Goes to Pens/AET" if is_ko else "Draw", "⚪"),
+        ("team_b_by_1",  f"{m['team_b']} wins by 1",  "🔴"),
+        ("team_b_2plus", f"{m['team_b']} wins by 2+", "🔴"),
+    ]
+    for pk,label,emoji in pot_rows:
+        tot=s["totals"].get(pk,0); cnt=s["counts"].get(pk,0)
         b,pct=pbar(tot,g)
         odds=f"{g/tot:.2f}x" if tot else "—"
         lines.append(f"{emoji} *{label}*: {b} {pct:.0f}% | ₹{tot:,.0f} | {cnt} bets | {odds}")
-    note={"open":"🟢 Bets open","locked":"🔒 Bets locked","settled":f"✅ {plabel(m,m['winner'])} won"}
+    winner_label = db.plabel(m, m["winner"]) if m["winner"] else ""
+    note={"open":"🟢 Bets open","locked":"🔒 Bets locked","settled":f"✅ {winner_label} won"}
     lines.append(f"\n{note.get(m['status'],'')}")
     lines.append(f"\n/odds {mid} — names per pot + team history\n👉 /bet to place a bet")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
