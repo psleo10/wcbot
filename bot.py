@@ -624,7 +624,11 @@ async def cmd_odds(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_mybets(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         await update.message.reply_text(
-            "Your bets are private!\n\nDM @UFC_wcbot and use /mybets",
+            "📋 Your bets are private!\n\n"
+            "To see them:\n"
+            "1. Tap @UFC_wcbot\n"
+            "2. Tap *Start* or *Message*\n"
+            "3. Type /mybets",
             parse_mode=ParseMode.MARKDOWN
         )
         return
