@@ -345,30 +345,32 @@ async def cb_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
         return
 
+    is_ko = not m["label"].startswith("Group")
+    draw_label = "⚪ Goes to Pens / AET" if is_ko else "⚪ Draw"
+
+    def pl(pot):
+        tot = s["totals"].get(pot,0); cnt = s["counts"].get(pot,0)
+        b, pct = pbar(tot, grand)
+        odds = f"{grand/tot:.2f}x" if tot else "—"
+        return f"{b} {pct:.0f}% | ₹{tot:,.0f} ({cnt}) | {odds}"
+
     txt = (
         f"⚽ *{m['label']}*\n"
         f"🕐 {ist(m['kickoff'])}\n\n"
-        f"*Live pool — ₹{grand:,.0f} total*\n"
-        f"🔵 {m['team_a']}: {pot_line('team_a')}\n"
-        f"⚪ Draw: {pot_line('draw')}\n"
-        f"🔴 {m['team_b']}: {pot_line('team_b')}\n"
-        f"_(pots are anonymous)_\n\n"
-        f"*Who wins?*"
+        f"*Pool — ₹{grand:,.0f} total* _(anonymous)_\n"
+        f"🔵 {m['team_a']} by 2+: {pl('team_a_2plus')}\n"
+        f"🔵 {m['team_a']} by 1: {pl('team_a_by_1')}\n"
+        f"⚪ {draw_label[2:]}: {pl('draw_pens')}\n"
+        f"🔴 {m['team_b']} by 1: {pl('team_b_by_1')}\n"
+        f"🔴 {m['team_b']} by 2+: {pl('team_b_2plus')}\n\n"
+        f"*Pick your outcome:*"
     )
-    if is_knockout(m):
-        row1 = [
-            InlineKeyboardButton(f"🔵 {m['team_a']}", callback_data=f"bp:{mid}:team_a"),
-            InlineKeyboardButton(f"🔴 {m['team_b']}", callback_data=f"bp:{mid}:team_b"),
-        ]
-        txt += "\n\n_Knockout — no draw. Pens if level at 90._"
-    else:
-        row1 = [
-            InlineKeyboardButton(f"🔵 {m['team_a']}", callback_data=f"bp:{mid}:team_a"),
-            InlineKeyboardButton("⚪ Draw",            callback_data=f"bp:{mid}:draw"),
-            InlineKeyboardButton(f"🔴 {m['team_b']}", callback_data=f"bp:{mid}:team_b"),
-        ]
     kb = InlineKeyboardMarkup([
-        row1,
+        [InlineKeyboardButton(f"🔵 {m['team_a']} wins by 2+", callback_data=f"bp:{mid}:team_a_2plus")],
+        [InlineKeyboardButton(f"🔵 {m['team_a']} wins by 1",  callback_data=f"bp:{mid}:team_a_by_1")],
+        [InlineKeyboardButton(draw_label,                       callback_data=f"bp:{mid}:draw_pens")],
+        [InlineKeyboardButton(f"🔴 {m['team_b']} wins by 1",  callback_data=f"bp:{mid}:team_b_by_1")],
+        [InlineKeyboardButton(f"🔴 {m['team_b']} wins by 2+", callback_data=f"bp:{mid}:team_b_2plus")],
         [
             InlineKeyboardButton("← All matches", callback_data="goback"),
             InlineKeyboardButton("❌ Cancel",      callback_data="cancel"),
@@ -384,14 +386,16 @@ async def cb_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     _, mid_s, pot = q.data.split(":")
     mid  = int(mid_s)
     m    = db.get_match(mid)
-    pick = plabel(m, pot)
+    pick = db.plabel(m, pot)
     s    = db.pool_summary(mid)
     grand   = s["grand"]
-    pot_tot = s["totals"][pot]
+    pot_tot = s["totals"].get(pot, 0.0)
 
-    on_pot    = next((b for b in db.get_user_bets_on_match(uid,mid) if b["pot"]==pot), None)
+    on_pot = db.get_user_bet_on_match(uid, mid)
+    if on_pot and on_pot["pot"] != pot:
+        on_pot = None  # different pot, treat as new
     edit_note = (
-        f"\n✏️ *Current bet:* ₹{on_pot['amount']:,.0f} on {pick} — pick new amount to replace"
+        f"\nYou already bet ₹{on_pot['amount']:,.0f} here — pick new amount to replace"
         if on_pot else ""
     )
 
@@ -432,7 +436,7 @@ async def cb_amount(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     mid    = int(mid_s)
     amount = float(amt_s)
     m      = db.get_match(mid)
-    pick   = plabel(m, pot)
+    pick   = db.plabel(m, pot)
     s      = db.pool_summary(mid)
     pot_tot  = s["totals"][pot]
     grand    = s["grand"]
@@ -473,7 +477,7 @@ async def cb_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     mid    = int(mid_s)
     amount = float(amt_s)
     m      = db.get_match(mid)
-    pick   = plabel(m, pot)
+    pick   = db.plabel(m, pot)
 
     ok, msg = db.place_bet(uid, mid, pot, amount)
     if ok:

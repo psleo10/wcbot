@@ -195,14 +195,28 @@ def _match_against_api(m, api_matches) -> Optional[str]:
         away_is_b = _team_matches(away, m["team_b"])
         if not ((home_is_a and away_is_b) or (home_is_b and away_is_a)):
             continue
-        gh = am["score"]["fullTime"]["home"] or 0
-        ga = am["score"]["fullTime"]["away"] or 0
-        if gh > ga:
-            return "team_a" if home_is_a else "team_b"
-        elif ga > gh:
-            return "team_a" if away_is_a else "team_b"
-        else:
-            return "draw"
+        # 5-pot logic using fullTime score diff only
+        ft = am.get("score", {}).get("fullTime", {})
+        gh = ft.get("home") or 0
+        ga = ft.get("away") or 0
+        diff = gh - ga
+        # Map diff to pot from home team perspective
+        if diff >= 2:    pot = "team_a_2plus"
+        elif diff == 1:  pot = "team_a_by_1"
+        elif diff == 0:  pot = "draw_pens"
+        elif diff == -1: pot = "team_b_by_1"
+        else:            pot = "team_b_2plus"
+        # Flip if home team is team_b in DB
+        if home_is_b:
+            flip = {
+                "team_a_2plus": "team_b_2plus",
+                "team_a_by_1":  "team_b_by_1",
+                "draw_pens":    "draw_pens",
+                "team_b_by_1":  "team_a_by_1",
+                "team_b_2plus": "team_a_2plus",
+            }
+            pot = flip.get(pot, pot)
+        return pot
     return None
 
 # Team name aliases — API name → possible DB names (covers all WC 2026 teams)
