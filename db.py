@@ -124,6 +124,7 @@ def get_user_bet_on_match(uid, mid):
         ).fetchone()
 
 def place_bet(uid, mid, pot, amount) -> tuple:
+    print(f"DEBUG POT: {pot}")
     if pot not in POTS:
         return False, "Invalid pot."
     if amount < 50:
