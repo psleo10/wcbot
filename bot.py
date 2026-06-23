@@ -476,11 +476,13 @@ async def cb_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     m      = db.get_match(mid)
     pick   = db.plabel(m, pot)
 
+    logger.info(f"place_bet: uid={uid} mid={mid} pot={pot} amount={amount}")
     ok, msg = db.place_bet(uid, mid, pot, amount)
+    logger.info(f"place_bet result: ok={ok} msg={msg}")
     if ok:
         action = "✏️ Updated" if msg=="updated" else "✅ Placed"
         s      = db.pool_summary(mid)
-        tot    = s["totals"][pot]
+        tot    = s["totals"].get(pot, 0.0)
         g      = s["grand"]
         odds   = f"{g/tot:.2f}x" if tot else "—"
         await q.edit_message_text(
