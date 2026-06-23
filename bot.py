@@ -45,7 +45,9 @@ def plabel(m, pot):
     return "Draw"
 
 def pemoji(pot):
-    return "🔵" if pot=="team_a" else ("🔴" if pot=="team_b" else "⚪")
+    if pot in ("team_a","team_a_2plus","team_a_by_1"): return "🔵"
+    if pot in ("team_b","team_b_2plus","team_b_by_1"): return "🔴"
+    return "⚪"
 
 def ist(s):
     try:
@@ -314,7 +316,7 @@ async def cb_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         odds   = f"{grand/tot:.2f}x" if tot else "—"
         return f"{b} {pct:.0f}% | ₹{tot:,.0f} | {cnt} bets | {odds}"
 
-    existing  = db.get_user_bet_on_match(uid, mid)
+    existing_bet = db.get_user_bet_on_match(uid, mid)
 
     # If user already has a bet on this match, only let them edit their existing pot
     if existing:
