@@ -638,7 +638,7 @@ async def cmd_mybets(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lines = [f"📋 *{u.first_name}'s bets*\n"]
     for b in bets:
         m_   = db.get_match(b["mid"])
-        pick = plabel(m_, b["pot"]) if m_ else b["pot"]
+        pick = db.plabel(m_, b["pot"]) if m_ else b["pot"]
         icon = icons.get(b["status"],"❓")
         line = f"{icon} *{b['label']}*\n  {pemoji(b['pot'])} {pick} — ₹{b['amount']:,.0f}"
         if b["status"]=="won":
@@ -663,20 +663,16 @@ async def cmd_lb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if r["wagered"] == 0: continue
         px  = medals[i] if i < 3 else str(i+1) + "."
         n   = r["net"]
-        mb  = r["matches_bet"]
-        w   = r["wins"]
-        wp  = round((w / mb) * 100) if mb > 0 else 0
-        pnl = ("*+₹" + "{:,.0f}".format(n) + "* 📈") if n > 0 else (("*-₹" + "{:,.0f}".format(abs(n)) + "* 📉") if n < 0 else "₹0 ➡")
-        bar = ("🟩" * int(wp/20)) + ("⬜" * (5 - int(wp/20)))
-        out.append(px + " *" + r["name"] + "*")
-        out.append("   " + pnl + "  |  " + str(mb) + " match(es)  |  " + bar + " " + str(wp) + "% win")
-        out.append("")
+        if n > 0:   pnl = "*+₹" + "{:,.0f}".format(n) + "* 📈"
+        elif n < 0: pnl = "*-₹" + "{:,.0f}".format(abs(n)) + "* 📉"
+        else:       pnl = "₹0 ➡"
+        out.append(px + " *" + r["name"] + "*  " + pnl)
         placed += 1
     if not placed:
-        await update.message.reply_text("No settled bets yet!\n\n/bet to place a bet")
+        await update.message.reply_text("No settled bets yet — board updates after first result!\n\n👉 /bet to place a bet")
         return
-    out.append("_Net P&L | matches bet | win % -- all settled_")
-    out.append("/bet to keep going")
+    out.append("\n_Net profit/loss — all settled matches_")
+    out.append("👉 /bet to keep going")
     await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
 
 async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
