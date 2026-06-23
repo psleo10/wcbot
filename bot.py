@@ -826,30 +826,35 @@ async def cmd_h2h(update, ctx):
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txt = (
         "⚽ *WC 2026 Bet Bot — Commands*\n\n"
-        "/bet — place a bet (button flow)\n"
-        "/matches — next 5 open fixtures\n"
+        "*🔒 DM only:*\n"
+        "/bet — place a bet (5-pot button flow)\n"
+        "/mybets — your personal bets and results\n\n"
+        "*📢 Group or DM:*\n"
+        "/matches — next 5 upcoming fixtures\n"
+        "/pool — all live pot sizes\n"
+        "/pool <id> — detailed pot breakdown\n"
+        "/odds <id> — crowd odds + team history\n"
         "/results — last 5 match scores\n"
-        "/pool — live pot sizes overview\n"
-        "/pool `<id>` — detailed pool for one match\n"
-        "/odds `<id>` — crowd odds + who backed whom + team history\n"
-        "/mybets — your bets and results\n"
-        "/leaderboard — net profit/loss standings\n"
+        "/leaderboard — net +/- standings\n"
+        "/topscorers — golden boot race\n"
+        "/h2h <id> — head to head history\n"
         "/history — WC records and fun facts\n\n"
-        "*Bet flow:*\n"
-        "Tap match → 🔵 Team A | ⚪ Draw | 🔴 Team B → ₹50/100/200/500/1000 → confirm\n\n"
+        "*5-pot bet flow:*\n"
+        "Team A by 2+ | Team A by 1 | Draw/Pens | Team B by 1 | Team B by 2+\n"
+        "Amounts: Rs50 / Rs100 / Rs200 / Rs500 / Rs1000\n\n"
         "*Rules:*\n"
-        "Winning pot splits entire pool proportionally\n"
-        "2.5% house cut | bets lock at kickoff | editable before\n"
-        "Bets are anonymous — only names shown in /odds, not amounts\n\n"
+        "Winning pot splits pool proportionally\n"
+        "2.5% house cut | lock at kickoff | one bet per match\n"
+        "Anonymous in group | names in /odds via DM\n\n"
         "👉 /bet to start!"
     )
     if is_admin(update.effective_user.id):
         txt += (
-            "\n\n*Admin:*\n"
-            "/settle `<id> <team_a|team_b|draw>`\n"
-            "/halftime `<id>`\n"
-            "/lockmatch `<id>`\n"
-            "/addmatch `TeamA vs TeamB YYYY-MM-DDTHH:MM`\n"
+            "\n\n*Admin only:*\n"
+            "/settle <id> <pot> — e.g. /settle 5 team_a_2plus\n"
+            "/halftime <id> — post HT snapshot\n"
+            "/lockmatch <id> — manual lock\n"
+            "/addmatch TeamA vs TeamB 2026-06-15T18:00\n"
         )
     await update.message.reply_text(txt, parse_mode=ParseMode.MARKDOWN)
 
@@ -869,11 +874,23 @@ async def cmd_settle(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if m["status"]=="settled":
         await update.message.reply_text("⚠️ Already settled."); return
     raw = ctx.args[1].strip().lower()
-    if raw in ("team_a","team_b","draw"):   wpot=raw
-    elif raw in m["team_a"].lower():        wpot="team_a"
-    elif raw in m["team_b"].lower():        wpot="team_b"
+    valid_pots = ["team_a_2plus","team_a_by_1","draw_pens","team_b_by_1","team_b_2plus"]
+    if raw in valid_pots:
+        wpot = raw
+    elif raw in ("team_a","team_a_2plus","team_a_by_1"):
+        wpot = raw if raw in valid_pots else "team_a_2plus"
+    elif raw in ("team_b","team_b_2plus","team_b_by_1"):
+        wpot = raw if raw in valid_pots else "team_b_2plus"
+    elif raw in ("draw","draw_pens","pens","penalties"):
+        wpot = "draw_pens"
+    elif raw in m["team_a"].lower():
+        wpot = "team_a_2plus"
+    elif raw in m["team_b"].lower():
+        wpot = "team_b_2plus"
     else:
-        await update.message.reply_text("❌ Use team_a, team_b, or draw."); return
+        await update.message.reply_text(
+            "❌ Valid pots: team_a_2plus, team_a_by_1, draw_pens, team_b_by_1, team_b_2plus"
+        ); return
     await do_settle(ctx.application, m, wpot)
     await update.message.reply_text(f"✅ Match #{mid} settled. Results posted.")
 
