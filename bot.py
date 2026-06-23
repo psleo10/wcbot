@@ -314,7 +314,7 @@ async def cb_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         odds   = f"{grand/tot:.2f}x" if tot else "—"
         return f"{b} {pct:.0f}% | ₹{tot:,.0f} | {cnt} bets | {odds}"
 
-    existing  = db.get_user_bets_on_match(uid, mid)
+    existing  = db.get_user_bet_on_match(uid, mid)
 
     # If user already has a bet on this match, only let them edit their existing pot
     if existing:
