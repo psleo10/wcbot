@@ -99,10 +99,20 @@ async def do_settle(app, match, winner_pot: str):
     llines = [f"  ❌ [{l['name']}](tg://user?id={l['tid']}): -₹{l['amount']:,.0f}"
               for l in summary["losers"]]
 
+    # Build winning outcome label with emoji
+    wpemoji = "🔵" if "team_a" in winner_pot else ("🔴" if "team_b" in winner_pot else "⚪")
+    pot_desc = {
+        "team_a_2plus": f"{match['team_a']} won by 2+ goals",
+        "team_a_by_1":  f"{match['team_a']} won by 1 goal",
+        "draw_pens":    "Draw / went to penalties",
+        "team_b_by_1":  f"{match['team_b']} won by 1 goal",
+        "team_b_2plus": f"{match['team_b']} won by 2+ goals",
+    }.get(winner_pot, wlabel)
+
     result = (
         f"{emoji} *{match['label']} — Full Time!*\n\n"
-        f"Result: *{wlabel}* wins\n"
-        f"Pool: ₹{summary['pool']:,.0f} | House: ₹{summary['house']:,.0f}\n\n"
+        f"⚽ Result: {wpemoji} *{pot_desc}*\n"
+        f"💰 Pool: ₹{summary['pool']:,.0f} | House cut: ₹{summary['house']:,.0f}\n\n"
         f"🏆 *Winners*\n" + ("\n".join(wlines) or "  Nobody bet on this pot!") +
         (f"\n\n😔 *Losers*\n" + "\n".join(llines) if llines else "") +
         f"\n\n📊 /leaderboard — updated standings\n"
@@ -111,11 +121,24 @@ async def do_settle(app, match, winner_pot: str):
 
     # Handle refund case — nobody bet on winning pot
     if summary.get("refunded"):
+        wpemoji2 = "🔵" if "team_a" in winner_pot else ("🔴" if "team_b" in winner_pot else "⚪")
+        pot_desc2 = {
+            "team_a_2plus": f"{match['team_a']} won by 2+ goals",
+            "team_a_by_1":  f"{match['team_a']} won by 1 goal",
+            "draw_pens":    "Draw / went to penalties",
+            "team_b_by_1":  f"{match['team_b']} won by 1 goal",
+            "team_b_2plus": f"{match['team_b']} won by 2+ goals",
+        }.get(winner_pot, wlabel)
+        refund_lines = ["\n".join([
+            f"  ↩️ [{w['name']}](tg://user?id={w['tid']}): ₹{w['bet']:,.0f} refunded"
+            for w in summary["winners"]
+        ])]
         result = (
             f"⚠️ *{match['label']} — Refunded!*\n\n"
-            f"Result: *{wlabel}*\n"
-            f"Nobody bet on the winning pot — all bets have been refunded in full.\n\n"
-            f"📊 /leaderboard | 👉 /bet to bet on next match"
+            f"⚽ Actual result: {wpemoji2} *{pot_desc2}*\n"
+            f"Nobody bet on this outcome — full refund, no house cut.\n\n"
+            f"↩️ *Refunded*\n" + (refund_lines[0] or "—") +
+            f"\n\n📊 /leaderboard | 👉 /bet to bet on next match"
         )
 
     # Post to group
@@ -673,19 +696,18 @@ async def cmd_lb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     rows   = db.leaderboard()
     medals = ["🥇", "🥈", "🥉"]
     out    = ["🏆 *WC 2026 Leaderboard*\n"]
-    placed = 0
-    for i, r in enumerate(rows):
-        if r["wagered"] == 0: continue
+    # Filter to only users who have wagered
+    active = [r for r in rows if r["wagered"] > 0]
+    if not active:
+        await update.message.reply_text("No settled bets yet — board updates after first result!\n\n👉 /bet to place a bet")
+        return
+    for i, r in enumerate(active):
         px  = medals[i] if i < 3 else str(i+1) + "."
         n   = r["net"]
         if n > 0:   pnl = "*+₹" + "{:,.0f}".format(n) + "* 📈"
         elif n < 0: pnl = "*-₹" + "{:,.0f}".format(abs(n)) + "* 📉"
         else:       pnl = "₹0 ➡"
         out.append(px + " *" + r["name"] + "*  " + pnl)
-        placed += 1
-    if not placed:
-        await update.message.reply_text("No settled bets yet — board updates after first result!\n\n👉 /bet to place a bet")
-        return
     out.append("\n_Net profit/loss — all settled matches_")
     out.append("👉 /bet to keep going")
     await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)

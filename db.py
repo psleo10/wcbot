@@ -124,7 +124,6 @@ def get_user_bet_on_match(uid, mid):
         ).fetchone()
 
 def place_bet(uid, mid, pot, amount) -> tuple:
-    print(f"DEBUG POT: {pot}")
     if pot not in POTS:
         return False, "Invalid pot."
     if amount < 50:
@@ -246,5 +245,5 @@ def leaderboard():
                      ELSE 0 END),0) as net
             FROM users u
             LEFT JOIN bets b ON u.tid=b.uid
-            GROUP BY u.tid ORDER BY net DESC
+            GROUP BY u.tid ORDER BY wagered DESC, net DESC
         """).fetchall()
